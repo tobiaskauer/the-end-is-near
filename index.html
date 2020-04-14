@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>The end is near</title>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
+  <script src="https://d3js.org/d3.v5.min.js"></script>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.js'></script>
+  <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.css' rel='stylesheet' />
+  <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+  <link href="https://fonts.googleapis.com/css2?family=Karla:wght@400;700&display=swap" rel="stylesheet">
+  <meta property="og:image" content="https://tobiaskauer.org/projects/end/preview.png" />
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1630">
+  <meta property="og:image:height" content="1646">
+</head>
+
+<style>
+  body {font-family: 'Karla', sans-serif;}
+  #map {height: 100vh;}
+  #control {
+    position: absolute;
+    top: 100px;
+    right: 50px;
+    background: rgba(50,50,50,.2);
+    padding: 20px;
+    font-weight: 400;
+  }
+  #desc {
+    position: absolute;
+    top: 50px;
+    left: 50px;
+    color: white;
+  }
+  h1 {font-weight: bold}
+</style>
+
+<body>
+  <div id="map"></div>
+  <div id="desc">
+    <h1>The end is near</h1>
+    <h2´3>What syllables do german towns and villages end with?</h3>
+  </div>
+  <div id="control">
+    <form>
+      <div class="form-group"></div>
+    </form>
+  </div>
+</body>
+
+<script>
+'use strict'
+
+var show = [
+  {key: "bach", color: "#EE1657"},
+  {key: "ach", color: "#FF90B1", break: true},
+  {key: "heim", color: "#A202F2", break: true},
+  {key: "weiler", color: "#136EEE"},
+  {key: "hofen", color: "#2D13EE"},
+  {key: "hoven", color: "#6A55FF", break: true},
+  {key: "stetten", color: "#2194A4"},
+  {key: "stedt", color: "#3AEBB4", break: true},
+  {key: "hausen", color: "#22A480"},
+  {key: "hagen", color: "#99FFDF", break: true},
+  {key: "rode", color: "#00F9FF"},
+  {key: "roda", color: "#00D7DC"},
+  {key: "rod", color: "#A7FDFF", break: true},
+  {key: "hain", color: "#B3D600"},
+  {key: "schütz", color: "#D2F619"},
+  {key: "grün", color: "#BDF619", break: true},
+  {key: "reuth", color: "#F67219"},
+  {key: "ing", color: "#F63019", break: true},
+  {key: "itz", color: "#E8D90D"},
+  {key: "ow", color: "#FFE600"}
+  //{key: "burg", color: "#EE1657", break: true},
+  //{key: "dorf", color: "#A7FDFF", break: true},
+]
+
+var endungen = [
+  "hausen", "felden", "leiten", "garten", "hammer", "kirchen", "stetten", "weiler", "schütz", "wangen", "wiesen", //6+
+  "mühle", "ingen", "hofen", "stein", "reuth", "bruch", "brunn", "hoven", "hagen", "walde", "stadt", "stedt", "hütte", //5
+  "dorf","bach","berg","heim","feld","thal","hain","chen", "roda", "ried", "burg", "rode", "ling", "grün", "born", //4
+  "hof", "ach", "rod", "itz", "ing", "ow", "au", "tal", "ede" //3-
+  ].map(x=>{
+  var obj = {key: x, data:[], order: show.findIndex(y=>y.key == x)}
+  return obj
+})
+
+var possibles = {}
+console.time()
+d3.csv('data.csv',d3.autoType).then(csv => {
+  var rest = {key: "rest", data: []}
+  csv.forEach((d,i)=> {
+    if (true) { //restrict i if necessary
+      var ortsteil = d.ORTSTEIL.split("(")[0].trim().toLowerCase().split(" ")[0]
+
+      var hasKnownEndung = false
+      for (var i=0; i < endungen.length; i++) {
+        if (ortsteil.endsWith(endungen[i].key)) {
+          endungen[i].data.push(d);
+          hasKnownEndung =true
+          break;
+        }
+      }
+
+      if(!hasKnownEndung) {
+        rest.data.push(d)
+        var last5 = ortsteil.slice(Math.max(ortsteil.length - 5, 1))
+        if(possibles[last5] == null) {
+          possibles[last5] = [d]
+        } else {
+          possibles[last5].push(d)
+        }
+      }
+    }
+  })
+
+  console.timeEnd()
+  //endungen = endungen.sort(((a,b)=>b.data.length - a.data.length))
+  //console.log(Object.entries(possibles).sort((a,b)=>b[1].length - a[1].length))
+
+  showMap(
+    endungen
+      .filter(x=>x.order != -1)
+      .sort((a,b)=>a.order - b.order)
+    ,rest
+  )
+});
+
+
+function showMap(endungen,rest) {
+  mapboxgl.accessToken = 'pk.eyJ1IjoidG9iaS12aWVyendvIiwiYSI6ImNqZThqOWN3NTA4aXEzM28zbWd1Y3BqejgifQ.N7atuEiZ1FJvayULe6BYmg';
+  var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/tobi-vierzwo/ck8yodl5v02h31iny9yyy7m47', 
+    center: [11,52],
+    zoom:  5.5
+  });
+  map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+
+  map.on('load', function() {
+    var color = d3.scaleOrdinal()
+      .domain(show.map(x=>x.key))
+      .range(show.map(x=>x.color))
+
+    var control = d3.select(".form-group")
+    var check = control.selectAll("div.form-check").data(show).enter().append("div").attr("class","form-check").style("margin-bottom",d=>(d.break) ? "10px" : "0px")
+    var box = check.append("input").attr("class","form-check-input").property("checked",true).attr("type","checkbox").attr("value","value").attr("id",d=>"check-"+d.key)
+    check.append("label").attr("class","form-check-label").attr("for",d=>"check-"+d.key).text(d=>"-"+d.key).style("color",d=>color(d.key))
+    box.on("click",d=>{
+      if(d3.select("#check-"+d.key).property("checked")) {
+        map.setLayoutProperty(d.key, 'visibility', 'visible');
+      } else {
+        map.setLayoutProperty(d.key, 'visibility', 'none');
+      }
+    })
+
+
+    //show rest but really hidden    
+      var geojson = turf.featureCollection(rest.data.map(x=>{
+        //console.log(x.LON, x.LAT, x.ORTSTEIL) //easy peasy debugging
+        return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) 
+      }))
+      map.addSource("rest", {
+        'type': 'geojson',
+        'data': geojson
+      });
+      map.addLayer({
+        'id': "rest",
+        'type': 'circle',
+        'source': "rest",
+        'paint': {
+          'circle-radius': 1,
+          'circle-color': "#555",
+          'circle-opacity': .5
+        }
+      });  
+
+
+    //show all clusters on top
+    endungen.forEach(endung => {
+      var geojson = turf.featureCollection(endung.data.map(x=>{
+        //console.log(x.LON, x.LAT, x.ORTSTEIL) //easy peasy debugging
+        return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) 
+      }))
+      map.addSource(endung.key, {
+        'type': 'geojson',
+        'data': geojson
+      });
+      map.addLayer({
+        'id': endung.key,
+        'type': 'circle',
+        'source': endung.key,
+        'paint': {
+          'circle-radius': 1.5,
+          'circle-color': color(endung.key).toString(),
+          'circle-opacity': 1
+        }
+      });  
+    })
+
+  })
+}
+</script>
+</html>
