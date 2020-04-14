@@ -27,6 +27,9 @@
     padding: 20px;
     font-weight: 400;
   }
+  .form-group {
+    line-height: 1;
+  }
   #desc {
     position: absolute;
     top: 50px;
@@ -37,12 +40,26 @@
   a {color:white;}
 </style>
 
+
+
+
 <body>
   <div id="map"></div>
   <div id="desc">
     <h1>The end is near</h1>
     <h3>What syllables do german towns and villages end with?</h3>
-    <p><small>Code & Source: <a href="https://github.com/tobiaskauer/the-end-is-near">https://github.com/tobiaskauer/the-end-is-near</a></small></p>
+    <p>Hover the labels to highlight places on the map. Uncheck the box to hide & show them.</p>   
+    <p><span id="feedback"></span>Search for more: </p>
+    <form class="form-inline" onSubmit='window.open("https://tobiaskauer.org/projects/end/#"+d3.select("#searchMore").property("value"), "_self")'>
+      <div class="form-group">
+        <input id="searchMore" type="text" class="form-control-sm" placeholder="feld">
+      </div>
+      <div class="form-group">
+        <button type="submit" class="btn btn-sm btn-primary">Search</button>
+      </div>
+    </form>
+    <p><small><a href="https://github.com/tobiaskauer/the-end-is-near">Code & Source</a>, Twitter: <a href="https://twitter.com/tobi_vierzwo">@tobi_vierzwo</a></small></p>
+
   </div>
   <div id="control">
     <form>
@@ -77,15 +94,15 @@ var show = [
   {key: "itz", color: "#E8D90D"},
   {key: "ow", color: "#FFE600"}
   
-  //{key: "ingen", color: "#D402F2", break: true},
+  //{key: "feld", color: "#D402F2", break: true},
   //{key: "leben", color: "#A7FDFF", break: true},
 ]
 
 var endungen = [
   "hausen", "felden", "leiten", "garten", "hammer", "kirchen", "stetten", "weiler", "schütz", "wangen", "wiesen", //6+
-  "mühle", "leben", "ingen", "hofen", "stein", "reuth", "bruch", "brunn", "hoven", "hagen", "walde", "stadt", "stedt", "hütte", //5
-  "dorf","bach","berg","heim","feld","thal","hain","chen", "roda", "ried", "burg", "rode", "ling", "grün", "born", //4
-  "hof", "ach", "rod", "itz", "ing", "ow", "au", "tal", "ede" //3-
+  "mühle", "leben", "ingen", "hofen", "stein", "reuth", "hafen", "horst", "bruch", "brunn", "hoven", "hagen", "walde", "stadt", "stedt", "hütte", //5
+  "dorf","bach","berg", "oich", "büll", "heim","feld","thal","hain","chen", "roda", "ried", "burg", "rode", "ling", "grün", "born", //4
+  "hof", "ach", "rod", "itz", "ing", "by", "ow", "au", "tal", "ede" //3-
   ].map(x=>{
   var obj = {key: x, data:[], order: show.findIndex(y=>y.key == x)}
   return obj
@@ -93,7 +110,7 @@ var endungen = [
 
 var possibles = {}
 console.time()
-d3.csv('data.csv',d3.autoType).then(csv => {
+d3.csv('data2.csv',d3.autoType).then(csv => {
   var rest = {key: "rest", data: []}
   csv.forEach((d,i)=> {
     if (true) { //restrict i if necessary
@@ -124,16 +141,32 @@ d3.csv('data.csv',d3.autoType).then(csv => {
   //endungen = endungen.sort(((a,b)=>b.data.length - a.data.length))
   //console.log(Object.entries(possibles).sort((a,b)=>b[1].length - a[1].length))
 
-  showMap(
-    endungen
+  var hash = unescape(location.hash.substr(1))
+  if(hash != "" ) {
+    d3.select("#searchMore").property("placeholder",hash)
+    if(endungen.map(x=>x.key).indexOf(hash) != -1) {
+    d3.select("#feedback").html('<i>I found some places that end on <strong style="color: steelblue">-'+hash+'</strong>. </i>')
+      showMap(endungen.filter(x=>x.key == hash),rest,"single")
+    } else {
+      d3.select("#feedback").html("<i>Sorry, I could not find <strong>"+hash+"</strong>. But don't trust me, I'm just a database! </i>")
+      showMap(endungen.filter(x=>x.order != -1).sort((a,b)=>a.order - b.order),rest,"all")
+    }
+  } else {
+    showMap(
+      endungen
       .filter(x=>x.order != -1)
       .sort((a,b)=>a.order - b.order)
-    ,rest
-  )
+    ,rest,"all")
+  }
+
+
+  
+
+
 });
 
 
-function showMap(endungen,rest) {
+function showMap(endungen,rest,filter) {
   mapboxgl.accessToken = 'pk.eyJ1IjoidG9iaS12aWVyendvIiwiYSI6ImNqZThqOWN3NTA4aXEzM28zbWd1Y3BqejgifQ.N7atuEiZ1FJvayULe6BYmg';
   var map = new mapboxgl.Map({
     container: 'map',
@@ -148,24 +181,27 @@ function showMap(endungen,rest) {
       .domain(show.map(x=>x.key))
       .range(show.map(x=>x.color))
 
-    var control = d3.select(".form-group")
-    var check = control.selectAll("div.form-check").data(show).enter().append("div").attr("class","form-check").style("margin-bottom",d=>(d.break) ? "10px" : "0px")
-    var box = check.append("input").attr("class","form-check-input").property("checked",true).attr("type","checkbox").attr("value","value").attr("id",d=>"check-"+d.key)
-    check.append("label").attr("class","form-check-label").attr("for",d=>"check-"+d.key).text(d=>"-"+d.key).style("color",d=>color(d.key))
-    box.on("click",d=>{
-      if(d3.select("#check-"+d.key).property("checked")) {
-        map.setLayoutProperty(d.key, 'visibility', 'visible');
-      } else {
-        map.setLayoutProperty(d.key, 'visibility', 'none');
-      }
-    })
+    if(filter == "all") {
+        var control = d3.select("#control .form-group")
+        var check = control.selectAll("div.form-check").data(show).enter().append("div").attr("class","form-check").style("margin-bottom",d=>(d.break) ? "10px" : "0px")
+        var box = check.append("input").attr("class","form-check-input").property("checked",true).attr("type","checkbox").attr("value","value").attr("id",d=>"check-"+d.key)
+        check.append("label").attr("class","form-check-label").attr("for",d=>"check-"+d.key).text(d=>"-"+d.key).style("color",d=>color(d.key))
+        box.on("click",d=>{
+          if(d3.select("#check-"+d.key).property("checked")) {
+            map.setLayoutProperty(d.key, 'visibility', 'visible');
+          } else {
+            map.setLayoutProperty(d.key, 'visibility', 'none');
+          }
+        })
 
-    check.on("mouseover",d=>{
-      map.setPaintProperty(d.key, 'circle-radius', 3);
-    })
-    check.on("mouseout",d=>{
-      map.setPaintProperty(d.key, 'circle-radius', 1);
-    })
+        check.on("mouseover",d=>{
+          map.setPaintProperty(d.key, 'circle-radius', 3);
+        })
+        check.on("mouseout",d=>{
+          map.setPaintProperty(d.key, 'circle-radius', 1);
+        })  
+    }
+
 
 
     //show rest but really hidden    
@@ -186,7 +222,7 @@ function showMap(endungen,rest) {
           'circle-color': "#555",
           'circle-opacity': .5
         }
-      });  
+      }); 
 
 
     //show all clusters on top
@@ -195,6 +231,7 @@ function showMap(endungen,rest) {
         //console.log(x.LON, x.LAT, x.ORTSTEIL) //easy peasy debugging
         return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) 
       }))
+      var col = 
       map.addSource(endung.key, {
         'type': 'geojson',
         'data': geojson
@@ -204,9 +241,9 @@ function showMap(endungen,rest) {
         'type': 'circle',
         'source': endung.key,
         'paint': {
-          'circle-radius': 1.5,
-          'circle-color': color(endung.key).toString(),
-          'circle-opacity': 1
+          'circle-radius': (filter == "single") ? 2 : 1,
+          'circle-color': (filter == "single") ? "steelblue" : color(endung.key).toString(),
+          'circle-opacity': .9
         }
       });  
     })
