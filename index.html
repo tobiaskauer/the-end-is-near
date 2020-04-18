@@ -37,10 +37,19 @@
     top: 50px;
     left: 50px;
     color: white;
+    pointer-events: none;
+  }
+
+  #desc form, #desc a {
+    pointer-events: all;
   }
   h1 {font-weight: bold}
   a {color:white;}
   a:hover {color: white;}
+  .mapboxgl-popup {
+max-width: 400px;
+font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+}
 </style>
 
 
@@ -82,14 +91,15 @@
   </div>
 </body>
 
-
-
 <script>
 'use strict'
+console.time()
 
-var show = [
+
+//what are the most frequent (happens often) & regional (does'nt happen everywhere) endings. group them with breaks.
+var endungen = [
   {key: "bach", color: "#EE1657"},
-  {key: "ach", color: "#FF90B1", break: true},
+  {key: "ach", color: "#FF90B1", break: true}, 
   {key: "ingen", color: "#D402F2"},
   {key: "heim", color: "#A202F2", break: true},
   {key: "weiler", color: "#136EEE"},
@@ -109,95 +119,65 @@ var show = [
   {key: "ing", color: "#F63019", break: true},
   {key: "itz", color: "#E8D90D"},
   {key: "ow", color: "#FFE600"}
-  
-  //{key: "feld", color: "#D402F2", break: true},
-  //{key: "leben", color: "#A7FDFF", break: true},
-]
-
-var endungen = [
-  "hausen", "felden", "leiten", "garten", "hammer", "kirchen", "stetten", "weiler", "schütz", "wangen", "wiesen", //6+
-  "mühle", "leben", "ingen", "hofen", "heide", "felde", "deich", "büttel", "brück", "stein", "reuth", "hafen", "horst", "bronn", "bruch", "brunn", "hoven", "hagen", "walde", "stadt", "stedt", "hütte", //5
-  "dorf","bach","berg", "oich", "büll", "heim", "furt", "beck", "bek", "feld","thal","hain","chen", "roda", "ried", "burg", "rode", "ling", "grün", "born", //4
-  "hof", "ach", "rod", "itz", "ing", "by", "ow", "au", "tal", "ede", "um" //3-
-  ].map(x=>{
-  var obj = {key: x, data:[], order: show.findIndex(y=>y.key == x)}
+].map((x,i)=>{
+  var obj = {key: x.key, color: x.color, data:[], order: i, break: x.break} //add buckets for data and an order that we can sort by
   return obj
 })
 
-var possibles = {}
-console.time()
-d3.csv('data2.csv',d3.autoType).then(csv => {
-  var rest = {key: "rest", data: []}
-  csv.forEach((d,i)=> {
-    if (true) { //restrict i if necessary
-      var ortsteil = d.ORTSTEIL.split("(")[0].trim().toLowerCase()//.split(" ")[0]
+//if search term is given as ?hash, use this, if its given as #hash, use this. if nothing's given, nobody's searching
+var hash = window.location.search.substr(1) ? window.location.search.substr(1).toLowerCase() : location.hash.substr(1) ? decodeURI(location.hash.substr(1)).toLowerCase() : "" 
 
-      var hasKnownEndung = false
-      for (var i=0; i < endungen.length; i++) {
-        if (ortsteil.endsWith(endungen[i].key)) {
-          endungen[i].data.push(d);
-          hasKnownEndung =true
-          break;
-        }
-      }
 
-      if(!hasKnownEndung) {
-        rest.data.push(d)
-        var last5 = ortsteil.slice(Math.max(ortsteil.length - 7, 1))
-        if(possibles[last5] == null) {
-          possibles[last5] = [d]
-        } else {
-          possibles[last5].push(d)
-        }
+if(
+  hash != "" && //is somebody searching?
+  endungen.findIndex(x=>x.key == hash) == -1 //is somebody searching for something that already exists
+  ) endungen.push({key: hash, color: "#BDF619", data: [], break: true, order: -1}) //no? then better put a bucket to fill for the searchterm into out array
+
+
+
+
+
+d3.csv('data2.csv',d3.autoType).then(csv => {//load data
+  csv.forEach((d,i)=> {//iteratre through it
+    var ortsteil = d.ORTSTEIL.split("(")[0].trim().toLowerCase()//.split(" ")[0] //ignore parenthesis and get ready for copmparison (you could always take the first word, lets see)
+
+    //var worte = ortsteil.split(" ").length
+    //if(worte > 1) console.log(ortsteil) --> todo, create a dictionary that decides what part of the ortnamen you should take.
+
+    //check in most frequent ones
+    for (var i=0; i < endungen.length; i++) { //check for all relevant endungen
+      if (ortsteil.endsWith(endungen[i].key)) {
+        endungen[i].data.push(d); //pu-push it real food
+        break;
       }
     }
   })
 
-  console.timeEnd()
+  
   //endungen = endungen.sort(((a,b)=>b.data.length - a.data.length))
   //console.log(Object.entries(possibles).sort((a,b)=>b[1].length - a[1].length))
 
 
-  var hash
-  if(window.location.search.substr(1)) {
-    hash = decodeURI(window.location.search.substr(1)).toLowerCase()
-  } else if (location.hash.substr(1)) {
-    hash = decodeURI(location.hash.substr(1)).toLowerCase()
-  } else {
-    hash = ""
-  }
 
-  if(hash != "" ) {
-    //if some string was submitted
+  //give feedback if people are searching, also set a variable that determines whether we should show or hide the most frequent ones
+  var result = endungen.find(x=> x.key == hash)
+  if(result != null ) { 
     d3.select("#searchMore").property("placeholder",hash)
-      if(endungen.map(x=>x.key).indexOf(hash) != -1) {
-        //if string is not among the pre-sorted 
-        d3.select("#feedback").html('<i>I found some places that end on <strong style="color: #D2F619">-'+hash+'</strong>. </i>')
-        showMap(endungen.filter(x=>x.key == hash),rest,"single")
-      } else  {
-        //csv.filter(x=>x.ORTSTEIL.endsWith(hash)) --> TODO: search across all
-        d3.select("#feedback").html("<i>Sorry, I could not find <strong>"+hash+"</strong>. But don't trust me, I'm just a database!</i>")
-        showMap(endungen.filter(x=>x.order != -1).sort((a,b)=>a.order - b.order),rest,"all")
-      }
+    if(result.data.length > 0) { 
+      d3.select("#feedback").html('<i>I found '+result.data.length+' places that end on <strong style="color: #BDF619">-'+hash+'</strong>. </i>')
     } else {
-      //if nothing was searched for
-      showMap(
-      endungen
-      .filter(x=>x.order != -1)
-      .sort((a,b)=>a.order - b.order)
-    ,rest,"all")
+      d3.select("#feedback").html("<i>Sorry, I could not find <strong>"+hash+"</strong>. But don't trust me, I'm just a database!</i>")
+    }
   }
 
-
-  
-
-
+  //start building the map. build it with all endungen and a parameter that tells us whether people were searching or not (do hide other layers if they did)
+  showMap(endungen.sort((a,b)=>a.order - b.order),(result != null))
 });
 
 
-function showMap(endungen,rest,filter) {
+function showMap(endungen,searching) {
+  //init map
   mapboxgl.accessToken = 'pk.eyJ1Ijoidmllcnp3byIsImEiOiJjazkyZ2RnNjgwNDR4M25vdDN0ZTdpdHRzIn0.lFZGhI2FCykRaez-5ofYpg';
-  //mapboxgl.accessToken = 'pk.eyJ1IjoidG9iaS12aWVyendvIiwiYSI6ImNqZThqOWN3NTA4aXEzM28zbWd1Y3BqejgifQ.N7atuEiZ1FJvayULe6BYmg';
   var map = new mapboxgl.Map({
     container: 'map',
     style: 'mapbox://styles/tobi-vierzwo/ck8yodl5v02h31iny9yyy7m47', 
@@ -207,80 +187,93 @@ function showMap(endungen,rest,filter) {
   map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
 
   map.on('load', function() {
-    var color = d3.scaleOrdinal()
-      .domain(show.map(x=>x.key))
-      .range(show.map(x=>x.color))
+    //add checkboxes
+    var control = d3.select("#control .form-group")
+    var check = control.selectAll("div.form-check").data(endungen).enter().append("div") //bootstrap checbox group
+      .attr("class","form-check")
+      .style("margin-bottom",d=>(d.break) ? "10px" : "0px") //add some space as defined in endungen
 
-    if(filter == "all") {
-        var control = d3.select("#control .form-group")
-        var check = control.selectAll("div.form-check").data(show).enter().append("div").attr("class","form-check").style("margin-bottom",d=>(d.break) ? "10px" : "0px")
-        var box = check.append("input").attr("class","form-check-input").property("checked",true).attr("type","checkbox").attr("value","value").attr("id",d=>"check-"+d.key)
-        check.append("label").attr("class","form-check-label").attr("for",d=>"check-"+d.key).text(d=>"-"+d.key).style("color",d=>color(d.key))
-        box.on("click",d=>{
-          if(d3.select("#check-"+d.key).property("checked")) {
-            map.setLayoutProperty(d.key, 'visibility', 'visible');
-          } else {
-            map.setLayoutProperty(d.key, 'visibility', 'none');
-          }
-        })
+    var box = check.append("input").attr("class","form-check-input") //put a checkbox into each div
+      .property("checked", d=> (!searching || d.key == hash)) //check the checkbox if people are not searching OR if it's the one that is being searched for
+      .attr("type","checkbox").attr("value","value")
+      .attr("id",d=>"check-"+d.key)
+      .on("click",d=>{
+        if(d3.select("#check-"+d.key).property("checked")) { //if you just checked the box
+         map.setLayoutProperty(d.key, 'visibility', 'visible'); //make the corresponsing map layer visible
+        } else {
+         map.setLayoutProperty(d.key, 'visibility', 'none'); //if not, hide it.
+       }
+     })
 
-        check.on("mouseover",(d,i,node)=>{
-          d3.select(node[i]).select(".form-check-label").style("font-weight","700")
-          map.setPaintProperty(d.key, 'circle-radius', 3);
-        })
-        check.on("mouseout",(d,i,node)=>{
-          d3.select(node[i]).select(".form-check-label").style("font-weight","400")
-          map.setPaintProperty(d.key, 'circle-radius', 1);
-        })  
-    }
+    check.append("label") //put a label to each checkbox
+      .attr("class","form-check-label")
+      .attr("for",d=>"check-"+d.key)
+      .text(d=>"-"+d.key)
+      .style("color",d=>d.color)
+      .on("mouseover",(d,i,node)=>{ //hovering over labels highlights the corresponding map layer
+        d3.select(node[i]).select(".form-check-label").style("font-weight","700")
+        map.setPaintProperty(d.key, 'circle-stroke-opacity', .9);
+      })
+      check.on("mouseout",(d,i,node)=>{ //and hites the highlight again
+        d3.select(node[i]).select(".form-check-label").style("font-weight","400")
+        map.setPaintProperty(d.key, 'circle-stroke-opacity', 0);
+      })  
+
+    var popup = new mapboxgl.Popup({ //add popup to display names
+      closeButton: false,
+      closeOnClick: false
+    });
 
 
-
-    //show rest but really hidden    
-      /*var geojson = turf.featureCollection(rest.data.map(x=>{
-        //console.log(x.LON, x.LAT, x.ORTSTEIL) //easy peasy debugging
-        return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) 
-      }))
-      map.addSource("rest", {
+    endungen.forEach(endung => { //iterate through endungen
+      map.addSource(endung.key, { //source for each layer
         'type': 'geojson',
-        'data': geojson
+        'data': turf.featureCollection(endung.data.map(x=>{ //use turf to create a featurecollection
+          return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) //set lat, lng and name as property of each point feature
+        }))
       });
-      map.addLayer({
-        'id': "rest",
-        'type': 'circle',
-        'source': "rest",
-        'paint': {
-          'circle-radius': 1,
-          'circle-color': "white",
-          'circle-opacity': 1
-        }
-      }); */
 
-
-    //show all clusters on top
-    endungen.forEach(endung => {
-      var geojson = turf.featureCollection(endung.data.map(x=>{
-        //console.log(x.LON, x.LAT, x.ORTSTEIL) //easy peasy debugging
-        return turf.point([x.LON, x.LAT], {name: x.ORTSTEIL}) 
-      }))
-      var col = 
-      map.addSource(endung.key, {
-        'type': 'geojson',
-        'data': geojson
-      });
-      map.addLayer({
+      map.addLayer({ //add layer
         'id': endung.key,
         'type': 'circle',
         'source': endung.key,
+        'layout': {
+          'visibility': (!searching || endung.key == hash) ? "visible" : "none",  //show the layer if people are not searching OR if it's the one that is being searched for
+        },
         'paint': {
-          'circle-radius': (filter == "single") ? 2 : 1,
-          'circle-color': (filter == "single") ? "#D2F619" : color(endung.key).toString(),
+          'circle-radius': {
+            'base': 1.75,
+            'stops': [[5, 1], [8, 6]] //from zoom 5 to 8, change circle radius from 1 to 6
+          },
+          'circle-stroke-color': endung.color.toString(),
+          'circle-stroke-opacity': 0, //we will set this to .9 when hovering a label
+          'circle-stroke-width': 2,
+          'circle-color': endung.color.toString(),
           'circle-opacity': .9
         }
       });  
-    })
 
+      //show name as popup on hover
+      map.on('mouseenter', endung.key, function(e) {
+        map.getCanvas().style.cursor = 'pointer';
+        var coordinates = e.features[0].geometry.coordinates.slice();
+         
+        while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
+          coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
+        }
+
+        popup
+        .setLngLat(coordinates)
+        .setHTML(e.features[0].properties.name)
+        .addTo(map);
+      });
+
+      map.on('mouseleave', endung.key, function() {
+        popup.remove();
+      });
+    })
   })
+  console.timeEnd()
 }
 </script>
 </html>
