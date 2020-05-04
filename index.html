@@ -125,7 +125,8 @@ var endungen = [
 })
 
 //if search term is given as ?hash, use this, if its given as #hash, use this. if nothing's given, nobody's searching
-var hash = window.location.search.substr(1) ? window.location.search.substr(1).toLowerCase() : location.hash.substr(1) ? decodeURI(location.hash.substr(1)).toLowerCase() : "" 
+var hash = window.location.search.substr(1) ? decodeURI(window.location.search.substr(1)).toLowerCase() : location.hash.substr(1) ? decodeURI(location.hash.substr(1)).toLowerCase() : "" 
+
 
 
 if(
@@ -211,10 +212,10 @@ function showMap(endungen,searching) {
       .text(d=>"-"+d.key)
       .style("color",d=>d.color)
       .on("mouseover",(d,i,node)=>{ //hovering over labels highlights the corresponding map layer
-        d3.select(node[i]).select(".form-check-label").style("font-weight","700")
+        d3.select(node[i]).style("font-weight","700")
         map.setPaintProperty(d.key, 'circle-stroke-opacity', .9);
       })
-      check.on("mouseout",(d,i,node)=>{ //and hites the highlight again
+      check.on("mouseout",(d,i,node)=>{ //and hides the highlight again
         d3.select(node[i]).select(".form-check-label").style("font-weight","400")
         map.setPaintProperty(d.key, 'circle-stroke-opacity', 0);
       })  
